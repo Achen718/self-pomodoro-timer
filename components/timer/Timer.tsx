@@ -1,6 +1,6 @@
 'use client';
 
-import { useTimer } from '@/hooks/useTimer/useTimer';
+import { usePomodoro } from '@/hooks/usePomodoro/usePomodoro';
 import { TimerDisplay } from './TimerDisplay';
 import { TimerControls } from './TimerControls';
 
@@ -9,19 +9,23 @@ const Timer = () => {
     formattedMinutes,
     formattedSeconds,
     isRunning,
-    startTimer,
-    pauseTimer,
-    stopTimer,
-  } = useTimer();
+    mode,
+    startPomodoro,
+    pausePomodoro,
+    resetPomodoro,
+  } = usePomodoro();
 
   return (
     <div>
+      <div className='timer-mode'>
+        {mode === 'work' ? 'Focus Time' : 'Break Time'}
+      </div>
       <TimerDisplay minutes={formattedMinutes} seconds={formattedSeconds} />
       <TimerControls
         isRunning={isRunning}
-        onStart={startTimer}
-        onPause={pauseTimer}
-        onStop={stopTimer}
+        onStart={startPomodoro}
+        onPause={pausePomodoro}
+        onStop={resetPomodoro}
       />
     </div>
   );
