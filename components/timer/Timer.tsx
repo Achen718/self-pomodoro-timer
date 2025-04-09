@@ -1,12 +1,14 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
-import { useTimer } from '@/hooks/useTimer';
+import { useTimer } from '@/hooks/useTimer/useTimer';
+import { TimerDisplay } from './TimerDisplay';
+import { TimerControls } from './TimerControls';
 
 const Timer = () => {
   const {
     formattedMinutes,
     formattedSeconds,
+    isRunning,
     startTimer,
     pauseTimer,
     stopTimer,
@@ -14,36 +16,13 @@ const Timer = () => {
 
   return (
     <div>
-      Timer component:
-      <div className='timer-display'>
-        <div className='timer-display__time'>
-          {formattedMinutes}:{formattedSeconds}
-        </div>
-        <Button
-          onClick={startTimer}
-          className='timer-display__button'
-          variant='outline'
-          size='sm'
-        >
-          Start
-        </Button>
-        <Button
-          className='timer-display__button'
-          variant='outline'
-          size='sm'
-          onClick={pauseTimer}
-        >
-          Pause
-        </Button>
-        <Button
-          className='timer-display__button'
-          variant='outline'
-          size='sm'
-          onClick={stopTimer}
-        >
-          Stop
-        </Button>
-      </div>
+      <TimerDisplay minutes={formattedMinutes} seconds={formattedSeconds} />
+      <TimerControls
+        isRunning={isRunning}
+        onStart={startTimer}
+        onPause={pauseTimer}
+        onStop={stopTimer}
+      />
     </div>
   );
 };
