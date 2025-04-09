@@ -1,6 +1,9 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 
+// Define constant for 50 minutes in seconds
+const MAX_TIME = 50 * 60;
+
 export interface TimerState {
   time: number;
   isRunning: boolean;
@@ -17,7 +20,21 @@ export function useTimer(initialTime: number = 0) {
     if (!timer.isRunning) {
       setTimer((prev) => ({ ...prev, isRunning: true }));
       intervalRef.current = window.setInterval(() => {
-        setTimer((prev) => ({ ...prev, time: prev.time + 1 }));
+        setTimer((prev) => {
+          const nextTime = prev.time + 1;
+
+          // Check if we've reached the 50-minute mark
+          if (nextTime >= MAX_TIME) {
+            // Auto-stop the timer
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
+            return { time: MAX_TIME, isRunning: false };
+          }
+
+          return { ...prev, time: nextTime };
+        });
       }, 1000);
     }
   };
@@ -59,5 +76,7 @@ export function useTimer(initialTime: number = 0) {
     startTimer,
     pauseTimer,
     stopTimer,
+    // Additional property to indicate if timer has reached max time
+    isCompleted: timer.time >= MAX_TIME,
   };
 }

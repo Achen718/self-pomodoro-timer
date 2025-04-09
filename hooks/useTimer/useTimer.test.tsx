@@ -4,7 +4,7 @@ import { useTimer } from '@/hooks/useTimer/useTimer';
 // Mock timer functions
 jest.useFakeTimers();
 
-describe('useTimer', () => {
+describe('useTimer hook', () => {
   beforeEach(() => {
     jest.clearAllTimers();
   });
@@ -129,6 +129,35 @@ describe('useTimer', () => {
     unmount();
 
     expect(clearIntervalSpy).toHaveBeenCalled();
+  });
+
+  test('should automatically stop when reaching 50 minutes', () => {
+    const { result } = renderHook(() => useTimer(2999)); // 49 minutes and 59 seconds
+
+    // Start the timer
+    act(() => {
+      result.current.startTimer();
+    });
+
+    // Advance time to exactly 50 minutes (one more second)
+    act(() => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    // Timer should stop automatically
+    expect(result.current.isRunning).toBe(false);
+    expect(result.current.formattedMinutes).toBe('50');
+    expect(result.current.formattedSeconds).toBe('00');
+    expect(result.current.isCompleted).toBe(true);
+
+    // Ensure time doesn't increment past 50 minutes
+    act(() => {
+      jest.advanceTimersByTime(5000);
+    });
+
+    // Time should be frozen at 50:00
+    expect(result.current.formattedMinutes).toBe('50');
+    expect(result.current.formattedSeconds).toBe('00');
   });
 
   test('should format time with leading zeros', () => {
