@@ -14,27 +14,32 @@ export function useTimer(initialTime: number = 0) {
     time: initialTime,
     isRunning: false,
   });
+
   const intervalRef = useRef<number | null>(null);
+
+  // Auto stop timer at 50 minutes
+  const handleTimerTick = (prev: TimerState): TimerState => {
+    const nextTime = prev.time + 1;
+
+    // Check if we've reached the 50-minute mark
+    if (nextTime >= MAX_TIME) {
+      // if current interval ID exists, clear it
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return { time: MAX_TIME, isRunning: false };
+    }
+
+    return { ...prev, time: nextTime };
+  };
 
   const startTimer = () => {
     if (!timer.isRunning) {
       setTimer((prev) => ({ ...prev, isRunning: true }));
+
       intervalRef.current = window.setInterval(() => {
-        setTimer((prev) => {
-          const nextTime = prev.time + 1;
-
-          // Check if we've reached the 50-minute mark
-          if (nextTime >= MAX_TIME) {
-            // Auto-stop the timer
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-              intervalRef.current = null;
-            }
-            return { time: MAX_TIME, isRunning: false };
-          }
-
-          return { ...prev, time: nextTime };
-        });
+        setTimer(handleTimerTick);
       }, 1000);
     }
   };
