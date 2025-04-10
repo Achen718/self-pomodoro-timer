@@ -75,11 +75,18 @@ export function usePomodoro(customSettings?: Partial<PomodoroSettings>) {
     stopTimer,
   ]);
 
-  // Reset both timer and mode
-  const resetPomodoro = useCallback(() => {
-    setMode('work');
-    stopTimer();
-  }, [stopTimer]);
+  // Reset both timer/mode
+  const resetPomodoro = useCallback(
+    (mode: PomodoroMode = 'work') => {
+      if (mode !== 'work' && mode !== 'break') {
+        console.warn(`Invalid mode: ${mode}, defaulting to 'work'`);
+        mode = 'work';
+      }
+      setMode(mode);
+      stopTimer();
+    },
+    [stopTimer]
+  );
 
   return {
     // Timer properties
