@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useTimer } from '@/hooks/useTimer/useTimer';
+import useSound from 'use-sound';
 
 export type PomodoroMode = 'work' | 'break';
 
@@ -17,6 +18,9 @@ const DEFAULT_SETTINGS: PomodoroSettings = {
 export function usePomodoro(customSettings?: Partial<PomodoroSettings>) {
   const settings = { ...DEFAULT_SETTINGS, ...customSettings };
   const [mode, setMode] = useState<PomodoroMode>('work');
+
+  const [playWorkComplete] = useSound('/sounds/arise.mp3');
+  const [playBreakComplete] = useSound('/sounds/atomic.mp3');
 
   // Initialize timer hook
   const {
@@ -48,11 +52,13 @@ export function usePomodoro(customSettings?: Partial<PomodoroSettings>) {
   useEffect(() => {
     if (isCompleted && mode === 'work') {
       // Work period completed, switch to break
+      playWorkComplete(); // Play sound
+
       setMode('break');
       stopTimer(); // Reset timer
       startTimer(); // Auto-start break
     }
-  }, [isCompleted, mode, startTimer, stopTimer]);
+  }, [isCompleted, mode, startTimer, stopTimer, playWorkComplete]);
 
   // Handle the completion of break mode
   useEffect(() => {
@@ -63,6 +69,8 @@ export function usePomodoro(customSettings?: Partial<PomodoroSettings>) {
         settings.breakDuration;
 
     if (isBreakCompleted) {
+      playBreakComplete();
+
       setMode('work');
       stopTimer(); // Reset timer
       // Don't auto-start the next work session
@@ -73,6 +81,7 @@ export function usePomodoro(customSettings?: Partial<PomodoroSettings>) {
     mode,
     settings.breakDuration,
     stopTimer,
+    playBreakComplete,
   ]);
 
   // Reset both timer/mode
