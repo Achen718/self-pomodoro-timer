@@ -18,9 +18,9 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  # Only use profile when not in GitHub Actions
-  # GitHub Actions provides credentials via environment variables
-  profile = terraform.workspace == "default" ? "pomodoro" : null
+  # Use profile only when AWS_ACCESS_KEY_ID environment variable is not set
+  # This ensures profile is only used locally, not in GitHub Actions
+  profile = length(coalesce(getenv("AWS_ACCESS_KEY_ID"), "")) == 0 ? "pomodoro" : null
 
   default_tags {
     tags = {
