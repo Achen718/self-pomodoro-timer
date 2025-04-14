@@ -7,7 +7,7 @@ variable "aws_region" {
 variable "bucket_name" {
   description = "Name of the S3 bucket for website hosting"
   type        = string
-  default     = "pomodoro-timer-app"
+  default     = "ac-pomodoro-timer-app"
 }
 
 variable "environment" {

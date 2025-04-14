@@ -6,14 +6,13 @@ terraform {
     }
   }
   
-  # Uncomment this block when you're ready to configure remote state
-  # backend "s3" {
-  #   bucket         = "pomodoro-terraform-state"
-  #   key            = "terraform.tfstate"
-  #   region         = "us-east-1"
-  #   encrypt        = true
-  #   dynamodb_table = "terraform-lock"
-  # }
+backend "s3" {
+  bucket         = "ac-pomodoro-terraform-state"
+  key            = "terraform.tfstate"
+  region         = "us-east-1"
+  encrypt        = true
+  dynamodb_table = "terraform-lock"
+}
 }
 
 provider "aws" {
