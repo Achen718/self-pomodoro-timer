@@ -16,10 +16,12 @@ terraform {
 }
 
 provider "aws" {
-  region  = var.aws_region
-  profile = "pomodoro"
+  region = var.aws_region
 
-  # Use these tags for all resources that support them
+  # Only use profile when not in GitHub Actions
+  # GitHub Actions provides credentials via environment variables
+  profile = terraform.workspace == "default" ? "pomodoro" : null
+
   default_tags {
     tags = {
       Project     = "Pomodoro Timer"
