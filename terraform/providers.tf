@@ -18,9 +18,7 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  # Use profile only when AWS_ACCESS_KEY_ID environment variable is not set
-  # This ensures profile is only used locally, not in GitHub Actions
-  profile = can(env("AWS_ACCESS_KEY_ID")) ? null : "pomodoro"
+  # No profile setting - rely on environment variables when available
 
   default_tags {
     tags = {
