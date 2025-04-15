@@ -88,8 +88,26 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
         run: |
-          echo "bucket_name=$(terraform output -raw website_bucket_name)" >> $GITHUB_OUTPUT
-          echo "cloudfront_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
+          echo "Terraform outputs:"
+          terraform output || echo "No terraform outputs found"
+
+          # Extract bucket name with error handling
+          BUCKET_NAME=$(terraform output -raw website_bucket_name 2>/dev/null || echo "")
+          if [ -z "$BUCKET_NAME" ]; then
+            echo "WARNING: website_bucket_name output is empty, using fallback value"
+            BUCKET_NAME="${{ secrets.S3_BUCKET_NAME || 'ac-pomodoro-timer-app' }}"
+          fi
+          echo "bucket_name=$BUCKET_NAME" >> $GITHUB_OUTPUT
+          echo "Using bucket name: $BUCKET_NAME"
+
+          # Extract CloudFront ID with error handling
+          CLOUDFRONT_ID=$(terraform output -raw cloudfront_distribution_id 2>/dev/null || echo "")
+          if [ -z "$CLOUDFRONT_ID" ]; then
+            echo "WARNING: cloudfront_distribution_id output is empty, using fallback value"
+            CLOUDFRONT_ID="${{ env.CLOUDFRONT_DISTRIBUTION_ID || secrets.CLOUDFRONT_DISTRIBUTION_ID }}"
+          fi
+          echo "cloudfront_id=$CLOUDFRONT_ID" >> $GITHUB_OUTPUT
+          echo "Using CloudFront ID: $CLOUDFRONT_ID"
 
   build-and-deploy:
     name: Build and Deploy
@@ -97,8 +115,8 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     env:
-      S3_BUCKET: ${{ needs.terraform.outputs.bucket_name }}
-      CLOUDFRONT_DISTRIBUTION_ID: ${{ needs.terraform.outputs.cloudfront_id }}
+      S3_BUCKET: ${{ needs.terraform.outputs.bucket_name || secrets.S3_BUCKET_NAME || 'ac-pomodoro-timer-app' }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ needs.terraform.outputs.cloudfront_id || secrets.CLOUDFRONT_DISTRIBUTION_ID }}
     steps:
       - uses: actions/checkout@v4
 
@@ -109,7 +127,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build app
         run: |
@@ -128,10 +146,8 @@ jobs:
           ls -la
           echo "Looking for build output directories:"
           find . -maxdepth 2 -type d -name "out" -o -name ".next" -o -name "build"
-          if [ ! -d "out" ] && [ -d ".next" ]; then
-            echo "Content of .next directory:"
-            ls -la .next
-          fi
+          echo "S3 bucket value: $S3_BUCKET"
+          echo "CloudFront distribution ID: $CLOUDFRONT_DISTRIBUTION_ID"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -161,7 +177,7 @@ jobs:
             ls -la
             exit 1
           fi
-            
+
       - name: Invalidate CloudFront cache
         run: |
           aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
