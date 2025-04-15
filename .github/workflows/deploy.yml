@@ -35,6 +35,9 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    outputs:
+      bucket_name: ${{ steps.terraform-outputs.outputs.bucket_name }}
+      cloudfront_id: ${{ steps.terraform-outputs.outputs.cloudfront_id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -78,20 +81,24 @@ jobs:
 
       - name: Export Terraform Outputs
         if: success()
+        id: terraform-outputs
         working-directory: ./terraform
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: us-east-1
         run: |
-          echo "S3_BUCKET=$(terraform output -raw website_bucket_name)" >> $GITHUB_ENV
-          echo "CLOUDFRONT_DISTRIBUTION_ID=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_ENV
+          echo "bucket_name=$(terraform output -raw website_bucket_name)" >> $GITHUB_OUTPUT
+          echo "cloudfront_id=$(terraform output -raw cloudfront_distribution_id)" >> $GITHUB_OUTPUT
 
   build-and-deploy:
     name: Build and Deploy
     needs: terraform
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    env:
+      S3_BUCKET: ${{ needs.terraform.outputs.bucket_name }}
+      CLOUDFRONT_DISTRIBUTION_ID: ${{ needs.terraform.outputs.cloudfront_id }}
     steps:
       - uses: actions/checkout@v4
 
