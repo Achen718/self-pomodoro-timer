@@ -105,9 +105,26 @@ jobs:
         run: npm ci
 
       - name: Build app
-        run: npm run build
+        run: |
+          npm run build
+          # Ensure the output directory is created
+          if [ ! -d "out" ] && [ -f "next.config.js" ] && grep -q "export" next.config.js; then
+            echo "Next.js static export is configured but 'out' directory not found"
+            ls -la
+          fi
         env:
           NEXT_EXPORT: true
+
+      - name: Debug build output
+        run: |
+          echo "Listing root directory:"
+          ls -la
+          echo "Looking for build output directories:"
+          find . -maxdepth 2 -type d -name "out" -o -name ".next" -o -name "build"
+          if [ ! -d "out" ] && [ -d ".next" ]; then
+            echo "Content of .next directory:"
+            ls -la .next
+          fi
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -118,8 +135,26 @@ jobs:
 
       - name: Deploy to S3
         run: |
-          aws s3 sync out/ s3://${{ env.S3_BUCKET }} --delete
-
+          # Check which output directory exists and use that
+          if [ -d "out" ]; then
+            echo "Using out/ directory"
+            aws s3 sync out/ s3://${{ env.S3_BUCKET }} --delete
+          elif [ -d ".next" ]; then
+            # For Next.js SSG with "output: 'export'" in next.config.js but different output structure
+            if [ -d ".next/static" ]; then
+              echo "Using .next/ directory"
+              aws s3 sync .next/ s3://${{ env.S3_BUCKET }} --delete
+            fi
+          elif [ -d "build" ]; then
+            echo "Using build/ directory"
+            aws s3 sync build/ s3://${{ env.S3_BUCKET }} --delete
+          else
+            echo "ERROR: Could not find build output directory"
+            echo "Current directory content:"
+            ls -la
+            exit 1
+          fi
+            
       - name: Invalidate CloudFront cache
         run: |
           aws cloudfront create-invalidation --distribution-id ${{ env.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"

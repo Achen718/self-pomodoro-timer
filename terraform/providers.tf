@@ -6,6 +6,7 @@ terraform {
     }
   }
 
+  # S3 backend configuration for state
   backend "s3" {
     bucket         = "ac-pomodoro-terraform-state"
     key            = "terraform.tfstate"
@@ -18,7 +19,8 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  # No profile setting - rely on environment variables when available
+  # Profile line removed to allow GitHub Actions to use environment variables
+  # For local development, use AWS_PROFILE=pomodoro environment variable
 
   default_tags {
     tags = {
