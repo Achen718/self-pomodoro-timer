@@ -20,7 +20,7 @@ provider "aws" {
 
   # Use profile only when AWS_ACCESS_KEY_ID environment variable is not set
   # This ensures profile is only used locally, not in GitHub Actions
-  profile = length(coalesce(getenv("AWS_ACCESS_KEY_ID"), "")) == 0 ? "pomodoro" : null
+  profile = can(env("AWS_ACCESS_KEY_ID")) ? null : "pomodoro"
 
   default_tags {
     tags = {
