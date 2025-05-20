@@ -1,87 +1,156 @@
-'use client';
-import { useState, useRef, useEffect } from 'react';
+'use client'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
-// Define constant for 50 minutes in seconds
-const MAX_TIME = 50 * 60;
+export function useTimer(durationInSeconds: number = 0) {
+  const initialDurationMsRef = useRef(durationInSeconds * 1000)
+  const [isRunning, setIsRunning] = useState(false)
+  const [currentTimeMs, setCurrentTimeMs] = useState(
+    initialDurationMsRef.current
+  )
 
-export interface TimerState {
-  time: number;
-  isRunning: boolean;
-}
+  const animationFrameIdRef = useRef<number | null>(null)
+  const segmentSystemStartTimeRef = useRef<number | null>(null)
+  const timeRemainingAtSegmentStartRef = useRef<number>(
+    initialDurationMsRef.current
+  )
 
-export function useTimer(initialTime: number = 0) {
-  const [timer, setTimer] = useState<TimerState>({
-    time: initialTime,
-    isRunning: false,
-  });
+  const justStoppedRef = useRef(false)
+  const completionTimeoutIdRef = useRef<NodeJS.Timeout | null>(null)
 
-  const intervalRef = useRef<number | null>(null);
+  const internalClearCompletionTimeout = useCallback(() => {
+    if (completionTimeoutIdRef.current) {
+      clearTimeout(completionTimeoutIdRef.current)
+      completionTimeoutIdRef.current = null
+    }
+  }, [])
 
-  // Auto stop timer at 50 minutes
-  const handleTimerTick = (prev: TimerState): TimerState => {
-    const nextTime = prev.time + 1;
-
-    // Check if we've reached the 50-minute mark
-    if (nextTime >= MAX_TIME) {
-      // if current interval ID exists, clear it
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return { time: MAX_TIME, isRunning: false };
+  const tick = useCallback(() => {
+    if (!isRunning || segmentSystemStartTimeRef.current === null) {
+      return
     }
 
-    return { ...prev, time: nextTime };
-  };
+    const systemElapsedInSegment =
+      Date.now() - segmentSystemStartTimeRef.current
+    let newCurrentTimeMs =
+      timeRemainingAtSegmentStartRef.current - systemElapsedInSegment
 
-  const startTimer = () => {
-    if (!timer.isRunning) {
-      setTimer((prev) => ({ ...prev, isRunning: true }));
-
-      intervalRef.current = window.setInterval(() => {
-        setTimer(handleTimerTick);
-      }, 1000);
+    if (newCurrentTimeMs <= 0) {
+      newCurrentTimeMs = 0
+      setCurrentTimeMs(0)
+      setIsRunning(false)
+      internalClearCompletionTimeout()
+    } else {
+      setCurrentTimeMs(newCurrentTimeMs)
+      animationFrameIdRef.current = requestAnimationFrame(tick)
     }
-  };
+  }, [
+    isRunning,
+    internalClearCompletionTimeout,
+    setIsRunning,
+    setCurrentTimeMs,
+  ])
 
-  const pauseTimer = () => {
-    if (timer.isRunning && intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-      setTimer((prev) => ({ ...prev, isRunning: false }));
-    }
-  };
-
-  const stopTimer = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setTimer({ time: 0, isRunning: false });
-  };
-
-  // Clear interval
   useEffect(() => {
+    const newInitialDurationMs = durationInSeconds * 1000
+    const oldInitialDurationMs = initialDurationMsRef.current
+
+    initialDurationMsRef.current = newInitialDurationMs
+
+    if (!isRunning) {
+      if (justStoppedRef.current) {
+        setCurrentTimeMs(newInitialDurationMs)
+        timeRemainingAtSegmentStartRef.current = newInitialDurationMs
+        justStoppedRef.current = false
+      } else {
+        if (
+          currentTimeMs === oldInitialDurationMs &&
+          oldInitialDurationMs !== newInitialDurationMs
+        ) {
+          setCurrentTimeMs(newInitialDurationMs)
+          timeRemainingAtSegmentStartRef.current = newInitialDurationMs
+        }
+      }
+    }
+  }, [durationInSeconds, isRunning, currentTimeMs])
+
+  useEffect(() => {
+    if (isRunning) {
+      timeRemainingAtSegmentStartRef.current = currentTimeMs
+      segmentSystemStartTimeRef.current = Date.now()
+      animationFrameIdRef.current = requestAnimationFrame(tick)
+
+      internalClearCompletionTimeout()
+      if (currentTimeMs > 0) {
+        completionTimeoutIdRef.current = setTimeout(() => {
+          setCurrentTimeMs(0)
+          setIsRunning(false)
+        }, currentTimeMs)
+      }
+    } else {
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current)
+        animationFrameIdRef.current = null
+      }
+      internalClearCompletionTimeout()
+      segmentSystemStartTimeRef.current = null
+    }
+
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current)
+        animationFrameIdRef.current = null
+      }
+      internalClearCompletionTimeout()
+    }
+  }, [
+    isRunning,
+    tick,
+    currentTimeMs,
+    internalClearCompletionTimeout,
+    setCurrentTimeMs,
+    setIsRunning,
+  ])
 
-  const rawMinutes = Math.floor(timer.time / 60);
-  const rawSeconds = timer.time % 60;
+  const startTimer = useCallback(() => {
+    if (!isRunning) {
+      if (currentTimeMs <= 0) {
+        setCurrentTimeMs(initialDurationMsRef.current)
+      }
+      justStoppedRef.current = false
+      setIsRunning(true)
+    }
+  }, [isRunning, currentTimeMs, setIsRunning, setCurrentTimeMs])
 
-  // Format time -- 00:00
-  const formattedMinutes = String(rawMinutes).padStart(2, '0');
-  const formattedSeconds = String(rawSeconds).padStart(2, '0');
+  const pauseTimer = useCallback(() => {
+    if (isRunning) {
+      justStoppedRef.current = false
+      setIsRunning(false)
+    }
+  }, [isRunning, setIsRunning])
+
+  const stopTimer = useCallback(() => {
+    setIsRunning(false)
+    setCurrentTimeMs(initialDurationMsRef.current)
+    justStoppedRef.current = true
+    internalClearCompletionTimeout()
+  }, [internalClearCompletionTimeout, setIsRunning, setCurrentTimeMs])
+
+  const totalRemainingSeconds = Math.max(0, Math.floor(currentTimeMs / 1000))
+  const rawMinutes = Math.floor(totalRemainingSeconds / 60)
+  const rawSeconds = totalRemainingSeconds % 60
+
+  const formattedMinutes = String(rawMinutes).padStart(2, '0')
+  const formattedSeconds = String(rawSeconds).padStart(2, '0')
+
+  const isCompleted = currentTimeMs <= 0 && !isRunning
 
   return {
     formattedMinutes,
     formattedSeconds,
-    isRunning: timer.isRunning,
+    isRunning,
     startTimer,
     pauseTimer,
     stopTimer,
-    // Additional property to indicate if timer has reached max time
-    isCompleted: timer.time >= MAX_TIME,
-  };
+    isCompleted,
+  }
 }
