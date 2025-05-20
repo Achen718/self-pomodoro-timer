@@ -1,178 +1,325 @@
-import { renderHook, act } from '@testing-library/react';
-import { useTimer } from '@/hooks/useTimer/useTimer';
+import { renderHook, act } from '@testing-library/react'
+import { useTimer } from '@/hooks/useTimer/useTimer'
 
-// Mock timer functions
-jest.useFakeTimers();
+jest.useFakeTimers()
+
+interface RAFSpy extends jest.SpyInstance<number, [FrameRequestCallback]> {
+  runLastCallback?: (time: number) => void
+}
 
 describe('useTimer hook', () => {
+  let dateNowSpy: jest.SpyInstance<number, []>
+  let requestAnimationFrameSpy: RAFSpy
+  let cancelAnimationFrameSpy: jest.SpyInstance<void, [number]>
+  let setTimeoutSpy: jest.SpyInstance
+  let clearTimeoutSpy: jest.SpyInstance
+
+  let rAFCallbacks: Map<number, FrameRequestCallback>
+  let nextRAFId: number
+
   beforeEach(() => {
-    jest.clearAllTimers();
-  });
+    jest.clearAllTimers()
+    dateNowSpy = jest.spyOn(Date, 'now')
+
+    rAFCallbacks = new Map()
+    nextRAFId = 1
+
+    requestAnimationFrameSpy = jest
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((cb) => {
+        const id = nextRAFId++
+        rAFCallbacks.set(id, cb)
+        return id
+      }) as RAFSpy
+
+    requestAnimationFrameSpy.runLastCallback = (time: number) => {
+      const lastId = Math.max(
+        ...(rAFCallbacks.size ? [...rAFCallbacks.keys()] : [0])
+      )
+      const cb = rAFCallbacks.get(lastId)
+      if (cb) cb(time)
+    }
+
+    cancelAnimationFrameSpy = jest
+      .spyOn(window, 'cancelAnimationFrame')
+      .mockImplementation((id: number) => {
+        rAFCallbacks.delete(id)
+      })
+
+    setTimeoutSpy = jest.spyOn(window, 'setTimeout')
+    clearTimeoutSpy = jest.spyOn(window, 'clearTimeout')
+  })
 
   afterEach(() => {
-    jest.clearAllMocks();
-  });
+    jest.restoreAllMocks()
+    rAFCallbacks.clear()
+  })
 
   describe('initialization', () => {
-    test('should initialize with default values', () => {
-      const { result } = renderHook(() => useTimer());
+    it('should initialize with default duration 0, isRunning false, isCompleted true', () => {
+      const { result } = renderHook(() => useTimer())
+      expect(result.current.formattedMinutes).toBe('00')
+      expect(result.current.formattedSeconds).toBe('00')
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.isCompleted).toBe(true)
+    })
 
-      expect(result.current.formattedMinutes).toBe('00');
-      expect(result.current.formattedSeconds).toBe('00');
-      expect(result.current.isRunning).toBe(false);
-    });
-
-    test('should initialize with custom initial time', () => {
-      const initialTime = 65; // 1 minute and 5 seconds
-      const { result } = renderHook(() => useTimer(initialTime));
-
-      expect(result.current.formattedMinutes).toBe('01');
-      expect(result.current.formattedSeconds).toBe('05');
-    });
-  });
+    it('should initialize with custom duration, isRunning false, isCompleted false', () => {
+      const initialTimeSeconds = 65
+      const { result } = renderHook(() => useTimer(initialTimeSeconds))
+      expect(result.current.formattedMinutes).toBe('01')
+      expect(result.current.formattedSeconds).toBe('05')
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.isCompleted).toBe(false)
+    })
+  })
 
   describe('timer operations', () => {
-    test('should start the timer', () => {
-      const { result } = renderHook(() => useTimer());
+    it('startTimer should start the timer, set isRunning to true, and schedule rAF and setTimeout', () => {
+      const { result } = renderHook(() => useTimer(10))
+      act(() => {
+        result.current.startTimer()
+      })
+      expect(result.current.isRunning).toBe(true)
+      expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(1)
+      expect(setTimeoutSpy).toHaveBeenCalledTimes(1)
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10000)
+    })
+
+    it(' should reset startTimer to full duration if starting from 0 and previously completed', () => {
+      const { result } = renderHook(() => useTimer(10))
+      act(() => {
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
+      act(() => {
+        dateNowSpy.mockReturnValue(10000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.isCompleted).toBe(true)
+      expect(result.current.formattedSeconds).toBe('00')
 
       act(() => {
-        result.current.startTimer();
-      });
+        result.current.startTimer()
+      })
+      expect(result.current.isRunning).toBe(true)
+      expect(result.current.isCompleted).toBe(false)
+      expect(result.current.formattedSeconds).toBe('10')
+    })
 
-      expect(result.current.isRunning).toBe(true);
-    });
-
-    test('should increment time when running', () => {
-      const { result } = renderHook(() => useTimer());
+    it('should decrement time when running (via rAF)', () => {
+      const { result } = renderHook(() => useTimer(5))
+      act(() => {
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
 
       act(() => {
-        result.current.startTimer();
-        jest.advanceTimersByTime(1000); // Advance by 1 second
-      });
-
-      expect(result.current.formattedSeconds).toBe('01');
-
-      act(() => {
-        jest.advanceTimersByTime(59000); // Advance by 59 more seconds
-      });
-
-      expect(result.current.formattedMinutes).toBe('01');
-      expect(result.current.formattedSeconds).toBe('00');
-    });
-
-    test('should pause the timer', () => {
-      const { result } = renderHook(() => useTimer());
-
-      // Start timer
-      act(() => {
-        result.current.startTimer();
-      });
-
-      // Advance time
-      act(() => {
-        jest.advanceTimersByTime(5000); // Advance by 5 seconds
-      });
-
-      // Pause the timer
-      act(() => {
-        result.current.pauseTimer();
-      });
-
-      expect(result.current.isRunning).toBe(false);
-      expect(result.current.formattedSeconds).toBe('05');
-
-      // Ensure time doesn't increment while paused
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-
-      expect(result.current.formattedSeconds).toBe('05');
-    });
-
-    test('should stop and reset the timer', () => {
-      const { result } = renderHook(() => useTimer());
+        dateNowSpy.mockReturnValue(1000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.formattedSeconds).toBe('04')
+      expect(result.current.isRunning).toBe(true)
 
       act(() => {
-        result.current.startTimer();
-        jest.advanceTimersByTime(10000); // Advance by 10 seconds
-        result.current.stopTimer();
-      });
+        dateNowSpy.mockReturnValue(3000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.formattedSeconds).toBe('02')
+    })
 
-      expect(result.current.isRunning).toBe(false);
-      expect(result.current.formattedMinutes).toBe('00');
-      expect(result.current.formattedSeconds).toBe('00');
-    });
-  });
+    it('pauseTimer should pause the timer, preserve time, and clear rAF/setTimeout', () => {
+      const { result } = renderHook(() => useTimer(10))
+      act(() => {
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
+      act(() => {
+        dateNowSpy.mockReturnValue(3000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.formattedSeconds).toBe('07')
+
+      cancelAnimationFrameSpy.mockClear()
+      clearTimeoutSpy.mockClear()
+
+      act(() => {
+        result.current.pauseTimer()
+      })
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.formattedSeconds).toBe('07')
+
+      expect(cancelAnimationFrameSpy).toHaveBeenCalled()
+      expect(clearTimeoutSpy).toHaveBeenCalled()
+
+      act(() => {
+        dateNowSpy.mockReturnValue(5000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.formattedSeconds).toBe('07')
+    })
+
+    it('stopTimer should stop, reset the timer to initial duration, and clear rAF/setTimeout', () => {
+      const { result } = renderHook(() => useTimer(10))
+      act(() => {
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
+      act(() => {
+        dateNowSpy.mockReturnValue(3000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.formattedSeconds).toBe('07')
+
+      cancelAnimationFrameSpy.mockClear()
+      clearTimeoutSpy.mockClear()
+
+      act(() => {
+        result.current.stopTimer()
+      })
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.formattedMinutes).toBe('00')
+      expect(result.current.formattedSeconds).toBe('10')
+      expect(cancelAnimationFrameSpy).toHaveBeenCalled()
+      expect(clearTimeoutSpy).toHaveBeenCalled()
+    })
+  })
+
+  describe('timer completion and isCompleted state', () => {
+    it('should complete when time runs out (via rAF), setting isRunning false, isCompleted true', () => {
+      const { result } = renderHook(() => useTimer(1))
+      act(() => {
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
+      act(() => {
+        dateNowSpy.mockReturnValue(1000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.isCompleted).toBe(true)
+      expect(result.current.formattedSeconds).toBe('00')
+    })
+
+    it('should complete when time runs out (via setTimeout fallback), setting isRunning false, isCompleted true', () => {
+      requestAnimationFrameSpy.mockImplementation(() => 0)
+      const { result } = renderHook(() => useTimer(1))
+      act(() => {
+        result.current.startTimer()
+      })
+      act(() => {
+        jest.runOnlyPendingTimers()
+      })
+      expect(result.current.isRunning).toBe(false)
+      expect(result.current.isCompleted).toBe(true)
+      expect(result.current.formattedSeconds).toBe('00')
+    })
+  })
+
+  describe('duration changes', () => {
+    it('should reset currentTimeMs to new duration if duration changes while stopped (not paused)', () => {
+      const { result, rerender } = renderHook(
+        ({ duration }) => useTimer(duration),
+        {
+          initialProps: { duration: 10 },
+        }
+      )
+      act(() => {
+        result.current.startTimer()
+        result.current.stopTimer()
+      })
+      expect(result.current.formattedSeconds).toBe('10')
+
+      rerender({ duration: 20 })
+      expect(result.current.formattedSeconds).toBe('20')
+      expect(result.current.isRunning).toBe(false)
+    })
+
+    it('should NOT reset currentTimeMs if duration changes while paused', () => {
+      const { result, rerender } = renderHook(
+        ({ duration }) => useTimer(duration),
+        {
+          initialProps: { duration: 10 },
+        }
+      )
+      act(() => {
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
+      act(() => {
+        dateNowSpy.mockReturnValue(3000)
+        if (requestAnimationFrameSpy.runLastCallback) {
+          requestAnimationFrameSpy.runLastCallback(Date.now())
+        }
+      })
+      act(() => {
+        result.current.pauseTimer()
+      })
+      expect(result.current.formattedSeconds).toBe('07')
+
+      rerender({ duration: 20 })
+      expect(result.current.formattedSeconds).toBe('07')
+    })
+  })
 
   describe('timer behavior', () => {
-    test('should not start multiple timers', () => {
-      const { result } = renderHook(() => useTimer());
-
-      // Start timer once
+    it('should not run multiple rAF loops if startTimer is called again while running', () => {
+      const { result } = renderHook(() => useTimer(10))
       act(() => {
-        result.current.startTimer();
-        jest.advanceTimersByTime(5000); // Advance by 5 seconds
-      });
-
-      // Try starting again
+        result.current.startTimer()
+      })
+      const initialRAFCallCount = requestAnimationFrameSpy.mock.calls.length
       act(() => {
-        result.current.startTimer();
-        jest.advanceTimersByTime(5000); // Advance by 5 more seconds
-      });
-
-      // Should be 10 seconds total (not running twice as fast)
-      expect(result.current.formattedSeconds).toBe('10');
-    });
-
-    test('should automatically stop when reaching 50 minutes', () => {
-      const { result } = renderHook(() => useTimer(2999)); // 49 minutes and 59 seconds
-
-      // Start the timer
-      act(() => {
-        result.current.startTimer();
-      });
-
-      // Advance time to exactly 50 minutes (one more second)
-      act(() => {
-        jest.advanceTimersByTime(1000);
-      });
-
-      // Timer should stop automatically
-      expect(result.current.isRunning).toBe(false);
-      expect(result.current.formattedMinutes).toBe('50');
-      expect(result.current.formattedSeconds).toBe('00');
-      expect(result.current.isCompleted).toBe(true);
-
-      // Ensure time doesn't increment past 50 minutes
-      act(() => {
-        jest.advanceTimersByTime(5000);
-      });
-
-      // Time should be frozen at 50:00
-      expect(result.current.formattedMinutes).toBe('50');
-      expect(result.current.formattedSeconds).toBe('00');
-    });
-  });
+        result.current.startTimer()
+      })
+      expect(requestAnimationFrameSpy.mock.calls.length).toBe(
+        initialRAFCallCount
+      )
+      expect(result.current.isRunning).toBe(true)
+    })
+  })
 
   describe('formatting and cleanup', () => {
-    test('should format time with leading zeros', () => {
-      const { result } = renderHook(() => useTimer(605)); // 10 minutes and 5 seconds
+    it('should format time with leading zeros', () => {
+      const { result } = renderHook(() => useTimer(65))
+      expect(result.current.formattedMinutes).toBe('01')
+      expect(result.current.formattedSeconds).toBe('05')
+    })
 
-      expect(result.current.formattedMinutes).toBe('10');
-      expect(result.current.formattedSeconds).toBe('05');
-    });
+    it('should clean up animationFrame and timeout on unmount', () => {
+      jest.clearAllMocks()
 
-    test('should clean up interval on unmount', () => {
-      const clearIntervalSpy = jest.spyOn(window, 'clearInterval');
-      const { result, unmount } = renderHook(() => useTimer());
+      const { result, unmount } = renderHook(() => useTimer(10))
 
       act(() => {
-        result.current.startTimer();
-      });
+        dateNowSpy.mockReturnValue(0)
+        result.current.startTimer()
+      })
 
-      unmount();
+      expect(result.current.isRunning).toBe(true)
+      expect(requestAnimationFrameSpy).toHaveBeenCalled()
 
-      expect(clearIntervalSpy).toHaveBeenCalled();
-    });
-  });
-});
+      cancelAnimationFrameSpy.mockClear()
+      clearTimeoutSpy.mockClear()
+
+      unmount()
+
+      expect(cancelAnimationFrameSpy).toHaveBeenCalled()
+      expect(clearTimeoutSpy).toHaveBeenCalled()
+    })
+  })
+})
